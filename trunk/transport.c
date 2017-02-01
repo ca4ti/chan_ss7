@@ -257,6 +257,7 @@ int openschannel(struct link* link, int channel, int* sigtype)
   int fd, res;
   int zapid = channel + 1 + link->first_zapid;
 
+  ast_log(LOG_NOTICE, "open schannel for link %s, channel %d, zapid %d\n", link->name, channel, zapid);
   fd = opendev(zapid);
   if (fd < 0)
     return fd;

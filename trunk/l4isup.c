@@ -426,6 +426,7 @@ static void mtp_enqueue_isup_packet(struct link* link, int cic, unsigned char *m
     {
       int n_slinks = 0;
       int six;
+      struct link* anyslink = NULL;
       for (lsi = 0; lsi < n_linksets; lsi++)
 	if (linksets[lsi].enabled)
 	  if (&linksets[lsi] == linkset || 
@@ -435,13 +436,13 @@ static void mtp_enqueue_isup_packet(struct link* link, int cic, unsigned char *m
 	six = cic % n_slinks;
 	n_slinks = 0;
 	for (lsi = 0; lsi < n_linksets; lsi++)
-	  if (linksets[lsi].enabled)
+	  if (linksets[lsi].enabled) {
 	    if (&linksets[lsi] == linkset || 
 		(is_combined_linkset(linkset, &linksets[lsi]))) {
-	      if (six - n_slinks < linksets[lsi].n_slinks) {
+	      if ((six >= n_slinks) && (six - n_slinks < linksets[lsi].n_slinks)) {
 		slink = linksets[lsi].slinks[six - n_slinks];
 		if (slink && !mtp_is_transfer_allowed(slink, linksets[lsi].dpc))
-		  continue;
+		  slink = NULL;
 		if (slink && (*slink->mtp3server_host) && (slink->mtp3fd == -1))
 		  slink = NULL;
 		else
@@ -458,7 +459,12 @@ static void mtp_enqueue_isup_packet(struct link* link, int cic, unsigned char *m
 	      }
 	      n_slinks += linksets[lsi].n_slinks;
 	    }
+	    if (slink)
+	      anyslink = slink;
+	  }
       }
+      if (!slink)
+	slink = anyslink;
     }
     break;
   }
@@ -4594,16 +4600,22 @@ static int do_group_circuit_block_unblock(struct linkset* linkset, int firstcic,
   int current, varptr;
   unsigned char param[6];
   unsigned char cir_group_sup_type_ind;
+  int count = 32;
   unsigned long mask = 0;
   struct ss7_chan *pvt;
   int p;
 
   if (!cgb_mask)
     return firstcic+32;
+#if 0
+  while (count && !(cgb_mask & (1<<(count-1))))
+    count--;
+#endif
+  
   lock_global();
   if (linkset->grs) {
     memset(param, 0, sizeof(param));
-    for (p = 0; p < 32; p++) {
+    for (p = 0; p < count; p++) {
       param[0]++;
       if (cgb_mask & (1<<p)) {
 	pvt = linkset->cic_list[firstcic+p];
@@ -4620,7 +4632,9 @@ static int do_group_circuit_block_unblock(struct linkset* linkset, int firstcic,
       }
     }
     param[0]--; /* Range code = range-1 */
+#if 1
     param[0] = 32; /* SIU requires this!! */
+#endif
     ast_log(LOG_NOTICE, "Sending CIRCUIT GROUP %sBLOCKING, cic=%d, mask=0x%08lx.\n", do_block ? "" : "UN", firstcic, mask);
 
     pvt = linkset->cic_list[firstcic];
@@ -4634,7 +4648,7 @@ static int do_group_circuit_block_unblock(struct linkset* linkset, int firstcic,
     /* variable range and status */
     isup_msg_start_variable_part(msg, sizeof(msg), &varptr, &current, 1, 0);
 
-    isup_msg_add_variable(msg, sizeof(msg), &varptr, &current, param, 6);
+    isup_msg_add_variable(msg, sizeof(msg), &varptr, &current, param, 3 + (count/8));
     mtp_enqueue_isup(pvt, msg, current);
     if (do_timers) {
       if (do_block)
@@ -4645,7 +4659,7 @@ static int do_group_circuit_block_unblock(struct linkset* linkset, int firstcic,
     ast_mutex_unlock(&pvt->lock);
   }
   else {
-    for (p = 0; p < 32; p++) {
+    for (p = 0; p < count; p++) {
       param[0]++;
       if (cgb_mask & (1<<p)) {
         pvt = linkset->cic_list[firstcic+p];

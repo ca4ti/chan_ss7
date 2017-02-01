@@ -16,6 +16,12 @@ Specfication for version 2.3.11
  - Flexible Dial command syntax for SS7 to allow routing to different linksets.
 
 
+New in version 2.4.6
+- Fixed crash bug selecting right signaling link in rare cases
+
+New in version 2.4.5
+- Fixed bug selecting right signaling link when multiple mtp3d configured, but not all running
+
 New in version 2.4.4
 - Release cause fixed for t9 timeout (no answer)
 
