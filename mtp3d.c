@@ -277,7 +277,7 @@ void l4isup_event(struct mtp_event* event)
 	    struct link* link = host->spans[i].links[l];
 	    struct linkset* linkset1 = link->linkset;
 	    if ((linkset1 == linkset) || is_combined_linkset(linkset1, linkset)) {
-	      ast_log(LOG_DEBUG, "ISUP event, check linkset=%s, linkset->opc=%d, DPC=%d, link=%s\n", linkset1->name, linkset1->opc, dpc, event->isup.slink->name);
+	      ast_log(LOG_DEBUG, "ISUP event, check linkset=%s, linkset->opc=%d, linkset->dpc=%d, opc=%d, dpc=%d, cic=%d, link=%s\n", linkset1->name, linkset1->opc, linkset1->dpc, opc, dpc, cic, event->isup.slink->name);
 	      if (dpc && linkset1->opc && dpc != linkset1->opc)
 		continue;
 	      if (!route_on_cic || (((link->first_cic <= cic) && (link->first_cic+32 > cic)) && (opc == linkset1->dpc))) {
