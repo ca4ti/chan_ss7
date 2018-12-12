@@ -277,7 +277,9 @@ void l4isup_event(struct mtp_event* event)
 	    struct link* link = host->spans[i].links[l];
 	    struct linkset* linkset1 = link->linkset;
 	    if ((linkset1 == linkset) || is_combined_linkset(linkset1, linkset)) {
-	      ast_log(LOG_DEBUG, "ISUP event, check linkset=%s, linkset->opc=%d, linkset->dpc=%d, opc=%d, dpc=%d, cic=%d, link=%s\n", linkset1->name, linkset1->opc, linkset1->dpc, opc, dpc, cic, event->isup.slink->name);
+	      ast_log(LOG_DEBUG, "ISUP event, check linkset=%s, linkset->opc=%d, linkset->dpc=%d, opc=%d, dpc=%d, cic=%d, link=%s, mtp3fd=%d\n", linkset1->name, linkset1->opc, linkset1->dpc, opc, dpc, cic, event->isup.slink->name, link->mtp3fd);
+	      if (link->mtp3fd == -1)
+		continue;
 	      if (dpc && linkset1->opc && dpc != linkset1->opc)
 		continue;
 	      if (!route_on_cic || (((link->first_cic <= cic) && (link->first_cic+32 > cic)) && (opc == linkset1->dpc))) {
@@ -442,8 +444,23 @@ static void mtp_mainloop(void)
       for(;;) {
 	struct sockaddr_in from;
 	socklen_t fromlen = sizeof(from);
-	if (mtp3_ipproto == IPPROTO_TCP)
-	  res = recvfrom(servsock, buf, sizeof(struct mtp_req), 0, &from, &fromlen);
+	if (mtp3_ipproto == IPPROTO_TCP) {
+	  int r = 0;
+	  do {
+	    res = recvfrom(servsock, buf+r, sizeof(struct mtp_req)-r, 0, &from, &fromlen);
+	    ast_log(LOG_DEBUG, "recvfrom res %d, r %d, fed %d, errno %d, err: %s\n", res, r, servsock, errno, strerror(errno));
+	    if (res == -1) {
+	      if ((errno == EINTR) || (errno == EAGAIN)) {
+		if (r)
+		  continue;
+	      }
+	      break;
+	    }
+	    else if (!res)
+	      break;
+	    r += res;
+	  } while (r < sizeof(struct mtp_req));
+	}
 	else
 	  res = recvfrom(servsock, buf, MTP_REQ_MAX_SIZE, 0, &from, &fromlen);
 	if(res == 0) {
@@ -481,8 +498,11 @@ static void mtp_mainloop(void)
 		res = 0;
 	      }
 	      else {
-		if (mtp3_ipproto == IPPROTO_TCP)
-		  res = recvfrom(servsock, &buf[p], req->len, 0, &from, &fromlen);
+		if (mtp3_ipproto == IPPROTO_TCP) {
+		  do {
+		    res = recvfrom(servsock, &buf[p], req->len, 0, &from, &fromlen);
+		  } while ((res == -1) && ((errno == EINTR) || (errno == EAGAIN)));
+		}
 	      }
 	      if (res == 0) {
 		ast_log(LOG_WARNING, "Unexpectec EOF on mtp3 socket %d\n", servsock);

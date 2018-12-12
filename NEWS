@@ -16,6 +16,10 @@ Specfication for version 2.3.11
  - Flexible Dial command syntax for SS7 to allow routing to different linksets.
 
 
+New in version 2.4.7
+- Fixed socket connection to mtp3d to have short timeout (works for "No route to host" cases)
+- Fixes for chan_ss7/mtp3d interface robustness
+
 New in version 2.4.6
 - Fixed crash bug selecting right signaling link in rare cases
 

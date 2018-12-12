@@ -47,6 +47,18 @@
 #define USE_ASTERISK_1_2
 #endif
 
+void ast_log(int level, const char *file, int line, const char *function, const char *fmt, ...)
+{
+}
+
+int __attribute__((format(printf, 4, 0))) __ast_str_helper(struct ast_str **buf, ssize_t max_len,
+                                                           int append, const char *fmt, va_list ap)
+{return 0;}
+char *__ast_str_helper2(struct ast_str **buf, ssize_t max_len,
+        const char *src, size_t maxsrc, int append, int escapecommas)
+{return NULL;}
+
+
 int main(int argc, char* argv[])
 {
 #ifdef USE_ASTERISK_1_2

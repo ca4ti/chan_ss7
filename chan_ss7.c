@@ -180,6 +180,7 @@ static void *monitor_main(void *data) {
 		  (is_combined_linkset(this_host->spans[k].links[l]->linkset, link->linkset))) {
 		if (link->remote) {
 		  if (link->mtp3fd == -1) {
+		    ast_log(LOG_DEBUG, "connect to mtp3d for link %s\n", link->name);
 		    link->mtp3fd = mtp3_connect_socket(link->mtp3server_host, *link->mtp3server_port ? link->mtp3server_port : "11999");
 		    if (link->mtp3fd != -1) {
 		      res = mtp3_register_isup(link->mtp3fd, link->linkix);
@@ -230,6 +231,9 @@ static void *monitor_main(void *data) {
 	if(fds[i].revents & (POLLERR|POLLNVAL|POLLHUP)) {
 	  if (i == 0) { /* receivepipe */
 	    ast_log(LOG_ERROR, "poll() return bad revents for receivepipe, 0x%04x\n", fds[i].revents);
+	  }
+	  else {
+	    ast_log(LOG_WARNING, "poll() return bad revents for fd %d, 0x%04x\n", fds[i].fd, fds[i].revents);
 	  }
 	  close(fds[i].fd);
 	  if (link)
