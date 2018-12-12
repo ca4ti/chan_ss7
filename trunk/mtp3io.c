@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
+#include <linux/tcp.h>
 
 #include <netdb.h>
 #include <netinet/in.h>
@@ -106,7 +107,7 @@ int mtp3_connect_socket(const char* host, const char* port)
 {
   struct addrinfo hints;
   struct addrinfo *result, *rp;
-  int s, res;
+  int s = -1, sock, oldflags, res, parm;
 
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_INET;
@@ -119,21 +120,54 @@ int mtp3_connect_socket(const char* host, const char* port)
     return -1;
   }
   for (rp = result; rp; rp = rp->ai_next) {
+    int flags;
+    struct pollfd fds[1];
     /* This is not working for non TCP/UDP protocols:   res = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol); */
-    res = socket(rp->ai_family, hints.ai_socktype, hints.ai_protocol);
-    if (res == -1)
+    sock = socket(rp->ai_family, hints.ai_socktype, hints.ai_protocol);
+    if (sock == -1)
       continue;
-    ast_log(LOG_DEBUG, "connecting to mtp3d %s:%d, fd %d\n", inet_ntoa(((struct sockaddr_in*) rp->ai_addr)->sin_addr), ntohs(((struct sockaddr_in*) rp->ai_addr)->sin_port), res);
-    if ((s = connect(res, rp->ai_addr, rp->ai_addrlen)) != -1)
+    res = fcntl(sock, F_GETFL);
+    if(res < 0) {
+      ast_log(LOG_WARNING, "Could not obtain flags for socket fd: %s.\n", strerror(errno));
+      return -1;
+    }
+    oldflags = res;
+    flags = res | O_NONBLOCK;
+    res = fcntl(sock, F_SETFL, flags);
+    ast_log(LOG_DEBUG, "connecting to mtp3d %s:%d, fd %d\n", inet_ntoa(((struct sockaddr_in*) rp->ai_addr)->sin_addr), ntohs(((struct sockaddr_in*) rp->ai_addr)->sin_port), sock);
+    if ((s = connect(sock, rp->ai_addr, rp->ai_addrlen)) != -1) {
       break;
-    close(res);
+    }
+    else {
+      if (errno == EINPROGRESS) {
+	fds[0].events = POLLIN|POLLOUT|POLLHUP|POLLERR;
+	fds[0].fd = sock;
+	res = poll(fds, 1, 200);
+	if ((res > 0) && (fds[0].revents & POLLOUT)  && !(fds[0].revents & (POLLHUP|POLLERR))) {
+	  s = sock;
+	  break;
+	}
+      }
+    }
+    close(sock);
   }
   if (rp == NULL) {
     ast_log(LOG_ERROR, "Could not connect to hostname/IP address '%s', port '%s': %s.\n", host, port, strerror(errno));
     res = -1;
   }
   freeaddrinfo(result);
-  return res;
+  fcntl(s, F_SETFL, oldflags);
+
+  parm = 1;
+  if(setsockopt(s, SOL_SOCKET, SO_KEEPALIVE, &parm, sizeof(parm)) < 0) {
+    close(s);
+    return -1;
+  }
+  parm = 2;
+  setsockopt(s, IPPROTO_TCP, TCP_KEEPINTVL, &parm, sizeof(parm));
+  parm = 5;
+  setsockopt(s, IPPROTO_TCP, TCP_KEEPIDLE, &parm, sizeof(parm));
+  return s;
 }
 
 
@@ -159,7 +193,7 @@ int mtp3_send(int s, const unsigned char* buff, unsigned int len)
 
 void mtp3_reply(int s, const unsigned char* buff, unsigned int len, const struct sockaddr* to, socklen_t tolen)
 {
-  ast_log(LOG_DEBUG, "Send packet to %s:%d\n", inet_ntoa(((struct sockaddr_in*) to)->sin_addr), ntohs(((struct sockaddr_in*) to)->sin_port));
+  ast_log(LOG_DEBUG, "Send packet to fd:%d, %s:%d\n", s, inet_ntoa(((struct sockaddr_in*) to)->sin_addr), ntohs(((struct sockaddr_in*) to)->sin_port));
   int res;
   do {
     res = sendto(s, buff, len, 0, to, tolen);
